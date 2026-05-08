@@ -1,0 +1,23 @@
+{
+  "name": "esp32cam-backend",
+  "version": "1.0.0",
+  "description": "ESP32-CAM Smart System Backend - IF-6403 Sistem Cerdas dan Otomasi",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js",
+    "worker": "node worker/consumer.js",
+    "worker:dev": "nodemon worker/consumer.js"
+  },
+  "dependencies": {
+    "amqplib": "^0.10.4",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "mongoose": "^8.4.1",
+    "morgan": "^1.10.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.4"
+  }
+}

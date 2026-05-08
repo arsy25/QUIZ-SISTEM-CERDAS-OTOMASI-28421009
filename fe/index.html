@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP32-CAM Dashboard</title>
+    <!-- Font Poppins -->
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Alpine.js -->
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <style>
+        body { font-family: 'Poppins', sans-serif; background-color: #f8fafc; }
+        .neon-blue { color: #00d2ff; }
+        .bg-neon-blue { background-color: #00d2ff; }
+        .border-neon-blue { border-color: #00d2ff; }
+        .neon-glow { box-shadow: 0 0 15px rgba(0, 210, 255, 0.3); }
+        .neon-glow-hover:hover { box-shadow: 0 0 20px rgba(0, 210, 255, 0.5); border-color: #00d2ff; }
+        [x-cloak] { display: none !important; }
+    </style>
+</head>
+<body x-data="dashboard()" x-init="init()">
+
+    <!-- NAVBAR -->
+    <nav class="bg-white shadow-sm border-b border-slate-100 sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16 items-center">
+                <div class="flex items-center gap-3">
+                    <div class="p-2 bg-blue-50 rounded-lg">
+                        <i data-lucide="camera" class="w-6 h-6 neon-blue"></i>
+                    </div>
+                    <h1 class="text-xl font-bold tracking-tight">ESP32<span class="neon-blue">-CAM</span></h1>
+                </div>
+                
+                <div class="flex items-center gap-4">
+                    <template x-if="isOffline">
+                        <span class="flex items-center gap-2 text-[10px] font-semibold text-amber-600 bg-amber-50 px-3 py-1.5 rounded-full border border-amber-200 uppercase tracking-wider">
+                            <i data-lucide="server-off" class="w-3 h-3"></i> Mode Simulasi
+                        </span>
+                    </template>
+                    <button @click="fetchStats(); fetchLatest(); fetchList();" 
+                            class="p-2 rounded-full hover:bg-slate-100 transition-colors text-slate-600 hover:neon-blue">
+                        <i data-lucide="refresh-cw" class="w-5 h-5" :class="loading ? 'animate-spin' : ''"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 space-y-8">
+        
+        <!-- STATS SECTION -->
+        <section class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <!-- Stat 1 -->
+            <div class="bg-white p-6 rounded-2xl border border-slate-100 flex items-center gap-5 neon-glow-hover transition-all duration-300">
+                <div class="p-4 bg-blue-50 rounded-xl"><i data-lucide="image" class="w-6 h-6 neon-blue"></i></div>
+                <div>
+                    <p class="text-xs font-medium text-slate-500 uppercase tracking-wider">Total Gambar</p>
+                    <p class="text-2xl font-bold text-slate-800" x-text="stats.total_images || 0"></p>
+                </div>
+            </div>
+            <!-- Stat 2 -->
+            <div class="bg-white p-6 rounded-2xl border border-slate-100 flex items-center gap-5 neon-glow-hover transition-all duration-300">
+                <div class="p-4 bg-blue-50 rounded-xl"><i data-lucide="monitor" class="w-6 h-6 neon-blue"></i></div>
+                <div>
+                    <p class="text-xs font-medium text-slate-500 uppercase tracking-wider">Kamera Unik</p>
+                    <p class="text-2xl font-bold text-slate-800" x-text="stats.unique_cameras || 0"></p>
+                </div>
+            </div>
+            <!-- Stat 3 -->
+            <div class="bg-white p-6 rounded-2xl border border-slate-100 flex items-center gap-5 neon-glow-hover transition-all duration-300">
+                <div class="p-4 bg-blue-50 rounded-xl"><i data-lucide="activity" class="w-6 h-6 neon-blue"></i></div>
+                <div>
+                    <p class="text-xs font-medium text-slate-500 uppercase tracking-wider">Capture Terakhir</p>
+                    <p class="text-sm font-bold text-slate-800" x-text="formatTime(stats.latest_capture?.created_at)"></p>
+                    <p class="text-[10px] text-slate-400" x-text="formatDate(stats.latest_capture?.created_at)"></p>
+                </div>
+            </div>
+        </section>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 pb-12">
+            
+            <!-- LATEST CAPTURE -->
+            <aside class="lg:col-span-1 space-y-4">
+                <h2 class="text-sm font-bold uppercase tracking-widest text-slate-400 flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full bg-neon-blue animate-pulse neon-glow"></span>
+                    Live Feed
+                </h2>
+                <div class="bg-white p-4 rounded-2xl border border-slate-100 neon-glow transition-all">
+                    <template x-if="latest">
+                        <div class="space-y-4">
+                            <div class="aspect-video bg-slate-100 rounded-xl overflow-hidden border border-slate-200 relative group">
+                                <img :src="latest.image_url" class="w-full h-full object-cover" 
+                                     @error="$el.src='https://via.placeholder.com/600x400?text=Koneksi+Gagal'">
+                                <div class="absolute top-3 left-3 bg-black/50 backdrop-blur-md text-[10px] text-white px-2 py-1 rounded border border-white/20 uppercase font-bold tracking-widest">
+                                    <span x-text="latest.guid"></span>
+                                </div>
+                            </div>
+                            <div>
+                                <p class="text-xs font-bold text-slate-800 truncate" x-text="latest.image_name"></p>
+                                <p class="text-[10px] text-slate-500 mt-1" x-text="formatDateTime(latest.created_at)"></p>
+                            </div>
+                        </div>
+                    </template>
+                    <template x-if="!latest">
+                        <div class="h-48 flex flex-col items-center justify-center text-slate-300">
+                            <i data-lucide="image-off" class="w-10 h-10 mb-2"></i>
+                            <p class="text-xs font-medium">Menunggu data...</p>
+                        </div>
+                    </template>
+                </div>
+            </aside>
+
+            <!-- GALLERY LIST -->
+            <section class="lg:col-span-2 space-y-4">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <h2 class="text-sm font-bold uppercase tracking-widest text-slate-400">Arsip Gambar</h2>
+                    
+                    <div class="relative">
+                        <input type="text" x-model="filters.guid" @keyup.enter="pagination.page = 1; fetchList()"
+                               placeholder="Cari GUID (Contoh: CAM-P016)..." 
+                               class="pl-10 pr-4 py-2 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-[#00d2ff] focus:border-transparent outline-none w-full sm:w-64 transition-all">
+                        <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2"></i>
+                    </div>
+                </div>
+
+                <div class="bg-white p-6 rounded-2xl border border-slate-100">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4" x-show="!loading">
+                        <template x-for="item in items" :key="item._id">
+                            <div class="group relative bg-slate-50 border border-slate-100 rounded-xl overflow-hidden hover:border-neon-blue/40 transition-all">
+                                <div class="aspect-video overflow-hidden bg-slate-200">
+                                    <img :src="item.image_url" class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                                         @error="$el.src='https://via.placeholder.com/400x300?text=No+Image'">
+                                </div>
+                                <div class="p-3">
+                                    <p class="text-[10px] font-bold neon-blue" x-text="item.guid"></p>
+                                    <p class="text-[9px] text-slate-400 mt-0.5" x-text="formatDateTime(item.created_at)"></p>
+                                </div>
+                                <button @click="deleteImage(item._id)" 
+                                        class="absolute top-2 right-2 p-1.5 bg-red-500 text-white rounded-lg opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600">
+                                    <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                                </button>
+                            </div>
+                        </template>
+                    </div>
+
+                    <!-- Empty State -->
+                    <div x-show="items.length === 0 && !loading" class="text-center py-12">
+                        <i data-lucide="folder-open" class="w-12 h-12 text-slate-200 mx-auto mb-2"></i>
+                        <p class="text-xs text-slate-400">Tidak ada data untuk ditampilkan</p>
+                    </div>
+
+                    <!-- Skeleton Loading -->
+                    <div x-show="loading" class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <template x-for="i in 6">
+                            <div class="animate-pulse bg-slate-50 h-32 rounded-xl"></div>
+                        </template>
+                    </div>
+
+                    <!-- PAGINATION -->
+                    <div class="flex items-center justify-between mt-8 pt-6 border-t border-slate-50">
+                        <p class="text-[10px] font-medium text-slate-400 uppercase">
+                            Total: <span class="text-slate-800" x-text="pagination.total"></span> items
+                        </p>
+                        <div class="flex items-center gap-2">
+                            <button @click="changePage(pagination.page - 1)" :disabled="pagination.page <= 1"
+                                    class="p-2 border border-slate-200 rounded-lg disabled:opacity-30 hover:bg-slate-50 transition-colors">
+                                <i data-lucide="chevron-left" class="w-4 h-4"></i>
+                            </button>
+                            <span class="text-xs font-bold px-3 py-1.5 bg-slate-50 border border-slate-100 rounded-lg" 
+                                  x-text="pagination.page + ' / ' + pagination.total_pages"></span>
+                            <button @click="changePage(pagination.page + 1)" :disabled="pagination.page >= pagination.total_pages"
+                                    class="p-2 border border-slate-200 rounded-lg disabled:opacity-30 hover:bg-slate-50 transition-colors">
+                                <i data-lucide="chevron-right" class="w-4 h-4"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <script>
+        const API_BASE = 'http://localhost:3001/api/cameras';
+
+        function dashboard() {
+            return {
+                loading: false,
+                isOffline: false,
+                stats: {},
+                latest: null,
+                items: [],
+                filters: { guid: '' },
+                pagination: { page: 1, limit: 9, total: 0, total_pages: 1 },
+
+                init() {
+                    this.fetchStats();
+                    this.fetchLatest();
+                    this.fetchList();
+                    lucide.createIcons();
+                    // Polling sederhana untuk data terbaru setiap 30 detik
+                    setInterval(() => { this.fetchLatest(); this.fetchStats(); }, 30000);
+                },
+
+                async fetchStats() {
+                    try {
+                        const res = await fetch(`${API_BASE}/stats`);
+                        const json = await res.json();
+                        this.stats = json.data;
+                        this.isOffline = false;
+                    } catch (e) {
+                        this.isOffline = true;
+                        this.stats = { total_images: 120, unique_cameras: 4, latest_capture: { created_at: new Date().toISOString() }};
+                    }
+                    this.$nextTick(() => lucide.createIcons());
+                },
+
+                async fetchLatest() {
+                    try {
+                        const res = await fetch(`${API_BASE}/latest`);
+                        const json = await res.json();
+                        this.latest = json.data;
+                    } catch (e) {
+                        this.latest = { guid: 'CAM-DEMO', image_name: 'demo.jpg', image_url: 'https://smartparking.pptik.id/data/data/CAM-P016-NcynZFYPh.jpg', created_at: new Date().toISOString() };
+                    }
+                    this.$nextTick(() => lucide.createIcons());
+                },
+
+                async fetchList() {
+                    this.loading = true;
+                    try {
+                        const url = new URL(API_BASE);
+                        url.searchParams.append('page', this.pagination.page);
+                        url.searchParams.append('limit', this.pagination.limit);
+                        if (this.filters.guid) url.searchParams.append('guid', this.filters.guid);
+
+                        const res = await fetch(url);
+                        const json = await res.json();
+                        this.items = json.data;
+                        this.pagination = json.pagination;
+                    } catch (e) {
+                        // Data Palsu jika API mati
+                        this.items = Array(6).fill(0).map((_, i) => ({
+                            _id: i,
+                            guid: 'CAM-MOCK',
+                            image_name: 'mock.jpg',
+                            image_url: 'https://smartparking.pptik.id/data/data/CAM-P016-NcynZFYPh.jpg',
+                            created_at: new Date().toISOString()
+                        }));
+                        this.pagination = { page: 1, limit: 9, total: 6, total_pages: 1 };
+                    }
+                    this.loading = false;
+                    this.$nextTick(() => lucide.createIcons());
+                },
+
+                async deleteImage(id) {
+                    if (!confirm("Hapus gambar ini?")) return;
+                    try {
+                        const res = await fetch(`${API_BASE}/${id}`, { method: 'DELETE' });
+                        if (res.ok) {
+                            this.fetchList();
+                            this.fetchStats();
+                        }
+                    } catch (e) {
+                        alert("Gagal menghapus (Server tidak terjangkau)");
+                    }
+                },
+
+                changePage(page) {
+                    this.pagination.page = page;
+                    this.fetchList();
+                },
+
+                // Utilities
+                formatDateTime(str) {
+                    if(!str) return '-';
+                    const d = new Date(str);
+                    return d.toLocaleDateString('id-ID') + ' ' + d.toLocaleTimeString('id-ID');
+                },
+                formatDate(str) {
+                    if(!str) return '-';
+                    return new Date(str).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+                },
+                formatTime(str) {
+                    if(!str) return '-';
+                    return new Date(str).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+                }
+            }
+        }
+    </script>
+</body>
+</html>
